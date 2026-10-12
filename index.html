@@ -1,63 +1,255 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sivachanthini | Research & Policy Portfolio</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 850px; margin: 40px auto; padding: 0 20px; color: #2d3748; line-height: 1.6; background-color: #f8fafc; }
-        header { background: #1e293b; color: white; padding: 35px 30px; border-radius: 10px; margin-bottom: 35px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        h1 { margin: 0 0 8px 0; font-size: 2.2em; letter-spacing: -0.5px; }
-        p.subtitle { margin: 0; color: #94a3b8; font-size: 1.1em; font-weight: 400; }
-        .section-title { font-size: 1.4em; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 20px; margin-top: 30px; }
-        .project-card { background: white; border: 1px solid #e2e8f0; padding: 25px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .project-title { color: #1e3a8a; margin-top: 0; margin-bottom: 10px; font-size: 1.25em; }
-        .project-desc { color: #475569; margin-bottom: 15px; font-size: 0.95em; }
-        .links { margin-top: 15px; }
-        .btn { display: inline-block; padding: 8px 16px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 0.88em; margin-right: 10px; }
-        .btn:hover { background-color: #1d4ed8; }
-        .btn-outline { background-color: transparent; color: #2563eb; border: 1px solid #2563eb; }
-        .btn-outline:hover { background-color: #eff6ff; }
-        footer { margin-top: 50px; text-align: center; color: #94a3b8; font-size: 0.85em; padding-bottom: 20px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta name="description" content="Sivachanthini's research portfolio featuring applied econometrics, Indian public policy and development forecasting.">
+
+  <title>Sivachanthini | Research & Policy</title>
+
+  <style>
+    :root {
+      --ivory: #F7F5EF;
+      --forest: #193D32;
+      --green: #315B49;
+      --sage: #8AA393;
+      --line: #DDE3DA;
+      --muted: #626B63;
+      --white: #FFFFFF;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--ivory);
+      color: var(--forest);
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.7;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 55px 24px;
+    }
+
+    header {
+      padding: 46px 0 42px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 700px;
+      margin: 15px 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(2.5rem, 6vw, 4.3rem);
+      font-weight: 500;
+      line-height: 1.12;
+      letter-spacing: -1.5px;
+    }
+
+    .intro {
+      max-width: 630px;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .section-heading {
+      margin: 45px 0 8px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.9rem;
+      font-weight: 500;
+    }
+
+    .section-intro {
+      margin-top: 0;
+      color: var(--muted);
+    }
+
+    .project-card {
+      display: grid;
+      grid-template-columns: 75px 1fr;
+      gap: 22px;
+      margin-top: 24px;
+      padding: 30px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .project-number {
+      color: var(--sage);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2rem;
+    }
+
+    .category {
+      margin: 0 0 7px;
+      color: var(--green);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .project-title {
+      margin: 0 0 12px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.65rem;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+
+    .project-desc {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .project-meta {
+      margin-bottom: 18px;
+      color: var(--green);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .project-link {
+      display: inline-block;
+      padding: 9px 16px;
+      background: var(--forest);
+      border: 1px solid var(--forest);
+      border-radius: 4px;
+      color: var(--white);
+      font-size: 0.88rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .project-link:hover {
+      background: var(--green);
+    }
+
+    footer {
+      margin-top: 55px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 30px 18px;
+      }
+
+      .project-card {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 23px;
+      }
+
+      .project-number {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
 </head>
+
 <body>
+  <main class="container">
 
     <header>
-        <h1>Sivachanthini</h1>
-        <p class="subtitle">Independent Researcher | Public Policy & Applied Econometrics</p>
+      <p class="eyebrow">Research · Public Policy · Data</p>
+
+      <h1>Understanding outcomes. Examining policy.</h1>
+
+      <p class="intro">
+        I explore questions at the intersection of public policy,
+        economic development and applied data analysis. This portfolio
+        brings together independent research using statistical methods
+        and public data to examine policy challenges in India.
+      </p>
     </header>
 
-    <h2 class="section-title">Research & Policy Projects</h2>
+    <section>
+      <h2 class="section-heading">Selected Research</h2>
 
-    <!-- Project 1 -->
-    <div class="project-card">
-        <h3 class="project-title">State-Level Determinants of Female Labour Force Participation in India</h3>
-        <p class="project-desc">Cross-sectional econometric analysis using PLFS 2021–22 data to examine key socio-economic factors influencing female workforce participation rates across states.</p>
-        <div class="links">
-            <a href="female_lfp_analysis.R" target="_blank" class="btn">View R Code Script</a>
-            <!-- Uncomment and add your PDF filename when ready:
-            <a href="FLFP_Policy_Brief.pdf" target="_blank" class="btn btn-outline">Read Policy Brief (PDF)</a>
-            -->
+      <p class="section-intro">
+        Two independent projects examining labour market outcomes
+        and India's progress towards development goals.
+      </p>
+
+      <article class="project-card">
+        <div class="project-number">01</div>
+
+        <div>
+          <p class="category">Labour Economics · India</p>
+
+          <h3 class="project-title">The Participation Puzzle</h3>
+
+          <p class="project-desc">
+            A state-level analysis of factors associated with female
+            labour force participation in India, using PLFS 2021–22
+            data and indicators of education, economic structure,
+            urbanisation and demographic conditions.
+          </p>
+
+          <p class="project-meta">
+            R · Regression Analysis · PLFS 2021–22
+          </p>
+
+          <a class="project-link" href="plfs.html">
+            Explore the research →
+          </a>
         </div>
-    </div>
+      </article>
 
-    <!-- Project 2 -->
-    <div class="project-card">
-        <h3 class="project-title">Sex Education Frameworks in India</h3>
-        <p class="project-desc">A comparative evaluation of policy implementation, curricula, and socio-cultural dimensions surrounding health and sex education initiatives.</p>
-        <div class="links">
-            <a href="sex_ed_india" target="_blank" class="btn btn-outline">View Research File</a>
+      <article class="project-card">
+        <div class="project-number">02</div>
+
+        <div>
+          <p class="category">Development · Forecasting</p>
+
+          <h3 class="project-title">Is India on Track for 2030?</h3>
+
+          <p class="project-desc">
+            A time-series forecasting project examining India's
+            trajectory on selected development indicators:
+            maternal mortality, safely managed sanitation and
+            access to clean cooking fuels and technologies.
+          </p>
+
+          <p class="project-meta">
+            R · Time-Series Analysis · SDG 2030
+          </p>
+
+          <a class="project-link" href="sdg.html">
+            Explore the research →
+          </a>
         </div>
-    </div>
-
-    <!-- How to add future projects:
-    Copy and paste one of the .project-card blocks above right here whenever you complete a new analysis or policy brief!
-    -->
+      </article>
+    </section>
 
     <footer>
-        <p>© Sivachanthini — Portfolio updated regularly.</p>
+      <p>
+        Sivachanthini Ravikumar · Independent Research Portfolio
+      </p>
     </footer>
 
+  </main>
 </body>
 </html>
+```
