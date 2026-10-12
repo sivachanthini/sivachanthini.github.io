@@ -1,0 +1,1084 @@
+
+---
+title: "Female Labour Force Participation in India"
+subtitle: "A State-Level Analysis Using PLFS 2021–22"
+author: "Sivachanthini Ravikumar"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+    fig_caption: true
+geometry: margin=1in
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+
+# Project setup
+
+setwd("C:/Users/WELCOME/Desktop/PLFS PROJECT")
+
+# Load packages
+
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(broom)
+library(car)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+```
+
+
+# Plot settings
+```{R}
+
+main_colour <- "#19324A"
+point_colour <- "#356A7D"
+accent_colour <- "#2A7F7F"
+highlight_colour <- "#C47A44"
+
+theme_set(
+  theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(
+        face = "bold",
+        size = 13,
+        colour = main_colour
+      ),
+      plot.subtitle = element_text(
+        size = 10
+      ),
+      axis.title = element_text(
+        colour = "#333333"
+      ),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(
+        colour = "#E5E5E5"
+      ),
+      plot.caption = element_text(
+        size = 9,
+        colour = "#666666"
+      )
+    )
+)
+```
+
+# Import cleaned working dataset
+```{R}
+
+df <- read_excel("main_female_lfpr_dataset_cleaned.xlsx")
+```
+# Inspect imported data
+```{R}
+
+# Data preparation
+
+# Helper function to safely convert imported values to numeric
+
+clean_numeric <- function(x) {
+  if (is.numeric(x)) {
+    return(x)
+  }
+  
+  x <- trimws(as.character(x))
+  x[x %in% c("", "NA", "N/A", "-", "—")] <- NA
+  
+  as.numeric(gsub("[^0-9.-]", "", x))
+}
+
+# Create analytical variables
+
+df_model <- df %>%
+  filter(state_ut != "Andaman & N. Island") %>%
+  mutate(
+    female_lfpr = clean_numeric(`female_lfpr_%`),
+    secondary_above = clean_numeric(`female_secondary_above_%`),
+    nsdp_numeric = clean_numeric(nsdp_2021_22),
+    log_nsdp = ifelse(
+      !is.na(nsdp_numeric) & nsdp_numeric > 0,
+      log(nsdp_numeric),
+      NA_real_
+    ),
+    urbanisation = clean_numeric(`urbanisation_2011_%`),
+    female_non_agri_share = clean_numeric(`female_non_agri_share_%`),
+    married_before_18 = clean_numeric(`women_married_before_18_%`),
+    tfr = clean_numeric(`TFR %`)
+  )
+
+# Analytical sample without requiring NSDP
+
+df_analysis <- df_model %>%
+  drop_na(
+    female_lfpr,
+    secondary_above,
+    urbanisation,
+    female_non_agri_share,
+    married_before_18,
+    tfr
+  )
+
+# Analytical sample for models requiring NSDP
+
+df_nsdp <- df_analysis %>%
+  drop_na(log_nsdp)
+
+# Check variable classes
+
+sapply(
+  df_analysis %>%
+    select(
+      female_lfpr,
+      secondary_above,
+      urbanisation,
+      female_non_agri_share,
+      married_before_18,
+      tfr
+    ),
+  class
+)
+
+# Check sample sizes
+
+dim(df_analysis)
+dim(df_nsdp)
+
+
+```
+
+```{R}
+df %>%
+  select(state_ut, nsdp_2021_22)
+```
+
+## Final Analytical Sample
+
+```{r analytical-sample}
+
+# Create the main analytical sample
+# All variables except log(NSDP) are available for all 34 states.
+
+df_analysis <- df_model %>%
+  drop_na(
+    female_lfpr,
+    secondary_above,
+    urbanisation,
+    female_non_agri_share,
+    married_before_18,
+    tfr
+  )
+
+# Create the NSDP analytical sample
+# Two states have missing NSDP values.
+
+df_nsdp <- df_analysis %>%
+  drop_na(log_nsdp)
+
+# Check sample sizes
+
+cat("General analytical sample:", nrow(df_analysis), "states\n")
+cat("NSDP analytical sample:", nrow(df_nsdp), "states\n")
+
+# Variable-level availability
+
+sample_sizes <- data.frame(
+  Variable = c(
+    "Female LFPR",
+    "Secondary education and above",
+    "Log NSDP",
+    "Urbanisation",
+    "Female non-agricultural employment share",
+    "Women married before age 18",
+    "Total fertility rate"
+  ),
+  N = c(
+    sum(!is.na(df_analysis$female_lfpr)),
+    sum(!is.na(df_analysis$secondary_above)),
+    sum(!is.na(df_analysis$log_nsdp)),
+    sum(!is.na(df_analysis$urbanisation)),
+    sum(!is.na(df_analysis$female_non_agri_share)),
+    sum(!is.na(df_analysis$married_before_18)),
+    sum(!is.na(df_analysis$tfr))
+  )
+)
+
+knitr::kable(
+  sample_sizes,
+  caption = "Available observations by analytical variable"
+)
+
+```
+
+
+# Descriptive Analysis
+
+## Distribution of Female LFPR
+
+```{r lfpr-distribution, fig.width=7, fig.height=4.5}
+
+ggplot(df_analysis, aes(x = female_lfpr)) +
+  geom_histogram(
+    bins = 8,
+    fill = point_colour,
+    color = "white"
+  ) +
+  labs(
+    title = "Distribution of Female Labour Force Participation",
+    x = "Female LFPR (%)",
+    y = "Number of states"
+  )
+
+```
+
+
+## Descriptive Statistics
+
+```{r descriptive-statistics}
+
+descriptive_statistics <- df_analysis %>%
+  summarise(
+    across(
+      c(
+        female_lfpr,
+        secondary_above,
+        log_nsdp,
+        urbanisation,
+        female_non_agri_share,
+        married_before_18,
+        tfr
+      ),
+      list(
+        Mean = ~mean(.x, na.rm = TRUE),
+        SD = ~sd(.x, na.rm = TRUE),
+        Minimum = ~min(.x, na.rm = TRUE),
+        Maximum = ~max(.x, na.rm = TRUE)
+      )
+    )
+  )
+
+descriptive_statistics
+
+```
+
+
+# Bivariate Analysis
+
+## Female LFPR and Secondary Education
+
+```{r education-lfpr, fig.width=7, fig.height=5}
+
+ggplot(
+  df_analysis,
+  aes(x = secondary_above, y = female_lfpr)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  labs(
+    title = "Female LFPR and Secondary Education",
+    x = "Female population with secondary education or above (%)",
+    y = "Female LFPR (%)"
+  )
+
+```
+
+
+## Female LFPR and Economic Output
+
+```{r nsdp-lfpr, fig.width=7, fig.height=5}
+
+ggplot(
+  df_nsdp,
+  aes(x = log_nsdp, y = female_lfpr)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  labs(
+    title = "Female LFPR and Economic Output",
+    x = "Log NSDP",
+    y = "Female LFPR (%)"
+  )
+
+```
+
+
+## Female LFPR and Urbanisation
+
+```{r urbanisation-lfpr, fig.width=7, fig.height=5}
+
+ggplot(
+  df_analysis,
+  aes(x = urbanisation, y = female_lfpr)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  labs(
+    title = "Female LFPR and Urbanisation",
+    x = "Urban population (%)",
+    y = "Female LFPR (%)"
+  )
+
+```
+
+
+## Female LFPR and Non-Agricultural Employment
+
+```{r nonagri-lfpr, fig.width=7, fig.height=5}
+
+ggplot(
+  df_analysis,
+  aes(x = female_non_agri_share, y = female_lfpr)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  labs(
+    title = "Female LFPR and Non-Agricultural Employment",
+    x = "Female non-agricultural employment share (%)",
+    y = "Female LFPR (%)"
+  )
+
+```
+
+
+## Female LFPR and Early Marriage
+
+```{r marriage-lfpr, fig.width=7, fig.height=5}
+
+ggplot(
+  df_analysis,
+  aes(x = married_before_18, y = female_lfpr)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  labs(
+    title = "Female LFPR and Early Marriage",
+    x = "Women married before age 18 (%)",
+    y = "Female LFPR (%)"
+  )
+
+```
+
+
+## Female LFPR and Fertility
+
+```{r fertility-lfpr, fig.width=7, fig.height=5}
+
+ggplot(
+  df_analysis,
+  aes(x = tfr, y = female_lfpr)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_smooth(
+    method = "lm",
+    se = TRUE
+  ) +
+  labs(
+    title = "Female LFPR and Fertility",
+    x = "Total fertility rate",
+    y = "Female LFPR (%)"
+  )
+
+```
+
+
+# Correlation Analysis
+```{R}
+
+correlation_data <- df_analysis %>%
+  select(
+    female_lfpr,
+    secondary_above,
+    urbanisation,
+    female_non_agri_share,
+    married_before_18,
+    tfr
+  )
+
+correlation_matrix <- cor(
+  correlation_data,
+  use = "pairwise.complete.obs"
+)
+
+round(correlation_matrix, 3)
+
+# Correlation between female LFPR and log NSDP
+
+cor(
+  df_nsdp$female_lfpr,
+  df_nsdp$log_nsdp,
+  use = "complete.obs"
+)
+```
+
+```{R}
+
+df_analysis %>%
+  filter(is.na(as.numeric(urbanisation))) %>%
+  select(state_ut, urbanisation)
+```
+For the NSDP correlation, the analysis uses the 32 states with available NSDP data.
+
+```{r nsdp-correlation}
+
+cor(
+  df_nsdp$female_lfpr,
+  df_nsdp$log_nsdp,
+  use = "complete.obs"
+)
+
+```
+
+
+# Regression Analysis
+
+## Individual Models
+
+Six separate ordinary least squares models are estimated to examine the association between female LFPR and each predictor individually.
+
+```{r individual-models}
+
+model_education <- lm(
+  female_lfpr ~ secondary_above,
+  data = df_analysis
+)
+
+model_nsdp <- lm(
+  female_lfpr ~ log_nsdp,
+  data = df_nsdp
+)
+
+model_urbanisation <- lm(
+  female_lfpr ~ urbanisation,
+  data = df_analysis
+)
+
+model_nonagri <- lm(
+  female_lfpr ~ female_non_agri_share,
+  data = df_analysis
+)
+
+model_marriage <- lm(
+  female_lfpr ~ married_before_18,
+  data = df_analysis
+)
+
+model_tfr <- lm(
+  female_lfpr ~ tfr,
+  data = df_analysis
+)
+
+```
+
+
+## Individual Model Results
+
+```{r individual-model-results}
+
+individual_models <- list(
+  Education = model_education,
+  Economic_Output = model_nsdp,
+  Urbanisation = model_urbanisation,
+  Non_Agricultural_Employment = model_nonagri,
+  Early_Marriage = model_marriage,
+  Fertility = model_tfr
+)
+
+individual_model_results <- bind_rows(
+  lapply(
+    names(individual_models),
+    function(x) {
+      tidy(individual_models[[x]]) %>%
+        mutate(Model = x)
+    }
+  )
+)
+
+individual_model_results
+
+```
+
+
+## Individual Model Comparison
+
+```{r individual-model-comparison}
+
+individual_model_comparison <- data.frame(
+  Model = names(individual_models),
+  N = sapply(individual_models, nobs),
+  R_squared = sapply(individual_models, function(x) summary(x)$r.squared),
+  Adjusted_R_squared = sapply(
+    individual_models,
+    function(x) summary(x)$adj.r.squared
+  )
+)
+
+individual_model_comparison
+
+write.csv(
+  individual_model_results,
+  "individual_model_results.csv",
+  row.names = FALSE
+)
+
+write.csv(
+  individual_model_comparison,
+  "individual_model_comparison.csv",
+  row.names = FALSE
+)
+
+```
+
+
+# Combined Models
+
+## Education and Economic Output
+
+This model examines education and economic output together.
+
+Because NSDP is unavailable for two states, this model uses the 32 observations with complete NSDP data.
+
+```{r education-economic-model}
+
+model_education_economic <- lm(
+  female_lfpr ~ secondary_above + log_nsdp,
+  data = df_nsdp
+)
+
+summary(model_education_economic)
+
+```
+
+
+## Education and Economic Output Diagnostics
+
+```{r education-economic-vif}
+
+vif(model_education_economic)
+
+```
+
+
+## Demand-Side Factors
+
+The demand-side model combines urbanisation and the female non-agricultural employment share.
+
+```{r demand-model}
+
+model_demand <- lm(
+  female_lfpr ~ urbanisation + female_non_agri_share,
+  data = df_analysis
+)
+
+summary(model_demand)
+
+```
+
+
+## Demand-Side Multicollinearity
+
+```{r demand-vif}
+
+vif(model_demand)
+
+```
+
+
+## Supply-Side Factors
+
+The supply-side model combines early marriage and fertility.
+
+```{r supply-model}
+
+model_supply <- lm(
+  female_lfpr ~ married_before_18 + tfr,
+  data = df_analysis
+)
+
+summary(model_supply)
+
+```
+
+
+## Supply-Side Multicollinearity
+
+```{r supply-vif}
+
+vif(model_supply)
+
+```
+
+
+# Full Model
+
+The full model includes all six predictors simultaneously.
+
+Because NSDP is included, the model is estimated using the 32 states with complete data on all six variables.
+
+```{r full-model}
+
+model_full <- lm(
+  female_lfpr ~
+    secondary_above +
+    log_nsdp +
+    urbanisation +
+    female_non_agri_share +
+    married_before_18 +
+    tfr,
+  data = df_nsdp
+)
+
+summary(model_full)
+
+```
+
+
+## Full Model Results
+
+```{r full-model-results}
+
+full_model_results <- tidy(model_full)
+
+full_model_results
+
+write.csv(
+  full_model_results,
+  "full_model_results.csv",
+  row.names = FALSE
+)
+
+```
+
+
+# Standardised Model
+
+Standardising the predictors allows the relative size of coefficients to be compared across variables measured in different units.
+
+```{r standardised-model}
+
+df_standardised <- df_nsdp %>%
+  mutate(
+    female_lfpr_z = as.numeric(scale(female_lfpr)),
+    secondary_above_z = as.numeric(scale(secondary_above)),
+    log_nsdp_z = as.numeric(scale(log_nsdp)),
+    urbanisation_z = as.numeric(scale(urbanisation)),
+    female_non_agri_share_z = as.numeric(
+      scale(female_non_agri_share)
+    ),
+    married_before_18_z = as.numeric(
+      scale(married_before_18)
+    ),
+    tfr_z = as.numeric(scale(tfr))
+  )
+
+model_standardised <- lm(
+  female_lfpr_z ~
+    secondary_above_z +
+    log_nsdp_z +
+    urbanisation_z +
+    female_non_agri_share_z +
+    married_before_18_z +
+    tfr_z,
+  data = df_standardised
+)
+
+summary(model_standardised)
+
+```
+
+
+## Standardised Model Results
+
+```{r standardised-results}
+
+standardised_model_results <- tidy(model_standardised)
+
+standardised_model_results
+
+write.csv(
+  standardised_model_results,
+  "standardised_model_results.csv",
+  row.names = FALSE
+)
+
+```
+
+
+# Model Diagnostics
+
+## Multicollinearity
+
+Variance inflation factors are calculated for the full model.
+
+```{r full-vif}
+
+full_model_vif <- vif(model_full)
+
+full_model_vif
+
+```
+
+
+## Regression Diagnostics
+
+The following diagnostics are used to assess whether the linear regression assumptions raise substantial concerns.
+
+## Residuals versus Fitted Values
+
+```{r residuals-fitted, fig.width=7, fig.height=5}
+
+ggplot(
+  data.frame(
+    fitted = fitted(model_full),
+    residuals = residuals(model_full)
+  ),
+  aes(x = fitted, y = residuals)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed"
+  ) +
+  geom_smooth(
+    method = "loess",
+    se = FALSE
+  ) +
+  labs(
+    title = "Residuals versus Fitted Values",
+    x = "Fitted values",
+    y = "Residuals"
+  )
+
+```
+
+
+## Normal Q-Q Plot
+
+```{r qq-plot, fig.width=7, fig.height=5}
+
+qq_data <- data.frame(
+  theoretical = qqnorm(
+    residuals(model_full),
+    plot.it = FALSE
+)$x,
+  sample = qqnorm(
+    residuals(model_full),
+    plot.it = FALSE
+)$y
+)
+
+ggplot(
+  qq_data,
+  aes(x = theoretical, y = sample)
+) +
+  geom_point(
+    size = 2.5,
+    color = point_colour
+  ) +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Normal Q-Q Plot",
+    x = "Theoretical quantiles",
+    y = "Sample quantiles"
+  )
+
+```
+
+
+## Influential Observations
+
+Cook's distance is used to identify observations that may exert disproportionate influence on the full model.
+
+```{r cooks-distance}
+
+cooks_values <- cooks.distance(model_full)
+
+cooks_data <- data.frame(
+  state_ut = df_nsdp$state_ut,
+  cooks_distance = cooks_values
+) %>%
+  arrange(desc(cooks_distance))
+
+cooks_data
+
+write.csv(
+  cooks_data,
+  "cooks_distance.csv",
+  row.names = FALSE
+)
+
+```
+
+
+## Cook's Distance Plot
+
+```{r cooks-plot, fig.width=8, fig.height=5}
+
+ggplot(
+  cooks_data,
+  aes(
+    x = reorder(state_ut, cooks_distance),
+    y = cooks_distance
+  )
+) +
+  geom_col(
+    fill = point_colour
+  ) +
+  geom_hline(
+    yintercept = 4 / nrow(df_nsdp),
+    linetype = "dashed"
+  ) +
+  coord_flip() +
+  labs(
+    title = "Cook's Distance by State",
+    x = NULL,
+    y = "Cook's distance"
+  )
+
+```
+
+
+# Model Comparison
+
+The models are compared using R-squared and adjusted R-squared.
+
+```{r model-comparison}
+
+model_comparison <- data.frame(
+  Model = c(
+    "Education",
+    "Economic output",
+    "Urbanisation",
+    "Non-agricultural employment",
+    "Early marriage",
+    "Fertility",
+    "Education + economic output",
+    "Demand-side factors",
+    "Supply-side factors",
+    "Full model"
+  ),
+  N = c(
+    nobs(model_education),
+    nobs(model_nsdp),
+    nobs(model_urbanisation),
+    nobs(model_nonagri),
+    nobs(model_marriage),
+    nobs(model_tfr),
+    nobs(model_education_economic),
+    nobs(model_demand),
+    nobs(model_supply),
+    nobs(model_full)
+  ),
+  R_squared = c(
+    summary(model_education)$r.squared,
+    summary(model_nsdp)$r.squared,
+    summary(model_urbanisation)$r.squared,
+    summary(model_nonagri)$r.squared,
+    summary(model_marriage)$r.squared,
+    summary(model_tfr)$r.squared,
+    summary(model_education_economic)$r.squared,
+    summary(model_demand)$r.squared,
+    summary(model_supply)$r.squared,
+    summary(model_full)$r.squared
+  ),
+  Adjusted_R_squared = c(
+    summary(model_education)$adj.r.squared,
+    summary(model_nsdp)$adj.r.squared,
+    summary(model_urbanisation)$adj.r.squared,
+    summary(model_nonagri)$adj.r.squared,
+    summary(model_marriage)$adj.r.squared,
+    summary(model_tfr)$adj.r.squared,
+    summary(model_education_economic)$adj.r.squared,
+    summary(model_demand)$adj.r.squared,
+    summary(model_supply)$adj.r.squared,
+    summary(model_full)$adj.r.squared
+  )
+)
+
+model_comparison
+
+write.csv(
+  model_comparison,
+  "model_comparison.csv",
+  row.names = FALSE
+)
+
+```
+
+
+## R-squared Comparison
+
+```{r model-comparison-plot, fig.width=8, fig.height=5}
+
+ggplot(
+  model_comparison,
+  aes(
+    x = reorder(Model, R_squared),
+    y = R_squared
+  )
+) +
+  geom_col(
+    fill = point_colour
+  ) +
+  coord_flip() +
+  labs(
+    title = "Model Comparison by R-squared",
+    x = NULL,
+    y = "R-squared"
+  )
+
+```
+
+
+# Findings
+
+The state-level analysis examines the association between female labour force participation and six structural and social indicators: female secondary education, economic output, urbanisation, female non-agricultural employment, early marriage and fertility. The individual models provide an initial comparison of the strength of these associations. The combined models then examine whether these relationships remain when related predictors are considered together. The results should be interpreted as **associations rather than causal effects**. The cross-sectional state-level design does not establish whether changes in any individual predictor would directly cause changes in female labour force participation.
+
+```{r key-results}
+
+# Extract key results for reporting
+
+key_results <- data.frame(
+  Model = c(
+    "Education",
+    "Economic output",
+    "Urbanisation",
+    "Non-agricultural employment",
+    "Early marriage",
+    "Fertility",
+    "Full model"
+  ),
+  N = c(
+    nobs(model_education),
+    nobs(model_nsdp),
+    nobs(model_urbanisation),
+    nobs(model_nonagri),
+    nobs(model_marriage),
+    nobs(model_tfr),
+    nobs(model_full)
+  ),
+  R_squared = c(
+    summary(model_education)$r.squared,
+    summary(model_nsdp)$r.squared,
+    summary(model_urbanisation)$r.squared,
+    summary(model_nonagri)$r.squared,
+    summary(model_marriage)$r.squared,
+    summary(model_tfr)$r.squared,
+    summary(model_full)$r.squared
+  )
+)
+
+key_results
+
+```
+
+
+# Limitations
+
+This analysis has several limitations.
+
+First, the analysis is conducted at the state/UT level and therefore does not capture differences between individuals, households, districts or communities within states.
+
+Second, the analysis is cross-sectional and uses indicators from different years where the most appropriate publicly available measures differ in reference period. The results therefore describe patterns of association rather than temporal or causal relationships.
+
+Third, the sample is relatively small, with 34 states/UTs in the general analytical sample and 32 observations available for models involving NSDP. Estimates from the multivariable models should therefore be interpreted cautiously.
+
+Fourth, state-level indicators may conceal substantial heterogeneity within states. A state with a relatively high average female LFPR, for example, may still contain districts or groups with very low participation.
+
+Finally, the analysis is limited to the indicators that could be obtained and harmonised consistently across states. Other potentially important factors—including wages, childcare availability, safety, occupational segregation, household income, social norms and the availability of suitable employment—are not directly captured in the model.
+
+These limitations mean that the results are best viewed as identifying **state-level patterns that merit further investigation**, rather than as estimates of causal effects.
+
+
+# Reproducibility
+
+All data preparation, transformations, statistical models, diagnostics and visualisations in this analysis were conducted in R.
+
+The principal packages used were:
+
+```{r package-list}
+
+package_list <- c(
+  "readxl",
+  "dplyr",
+  "ggplot2",
+  "broom",
+  "car",
+  "tidyr",
+  "knitr",
+  "kableExtra"
+)
+
+package_list
+
+```
+
+
+## Exported Results
+
+The analysis exports the following files to the project directory:
+
+```{r exported-files}
+
+exported_files <- c(
+  "individual_model_results.csv",
+  "individual_model_comparison.csv",
+  "full_model_results.csv",
+  "standardised_model_results.csv",
+  "model_comparison.csv",
+  "cooks_distance.csv"
+)
+
+exported_files
+
+```
+
+
+# R Session Information
+
+```{r session-information}
+
+sessionInfo()
+
+```
