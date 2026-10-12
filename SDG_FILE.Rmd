@@ -1,0 +1,611 @@
+
+---
+title: "SDG 2030 | India's Development Trajectories"
+author: "Sivachanthini R"
+subtitle: "A time-series analysis of maternal mortality, sanitation and clean cooking"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  fig.width = 6.2,
+  fig.height = 4.2,
+  out.width = "90%",
+  dpi = 300
+)
+
+
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forecast)
+library(knitr)
+library(scales)
+
+# Project palette
+sdg_burgundy <- "#762B3D"
+sdg_maroon   <- "#481B2C"
+sdg_brown    <- "#927451"
+sdg_neutral  <- "#E8DDD7"
+sdg_bg       <- "#FBF8F5"
+sdg_text     <- "#302A2B"
+sdg_grid     <- "#E9E2DE"
+
+theme_sdg <- function(base_size = 11) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      text = element_text(color = sdg_text),
+      plot.background = element_rect(
+        fill = sdg_bg, colour = NA
+      ),
+      panel.background = element_rect(
+        fill = sdg_bg, colour = NA
+      ),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(
+        colour = sdg_grid, linewidth = 0.35
+      ),
+      plot.title = element_text(
+        face = "bold", size = base_size + 4,
+        colour = sdg_maroon
+      ),
+      plot.subtitle = element_text(
+        colour = sdg_text, size = base_size
+      ),
+      plot.caption = element_text(
+        colour = "#766B68", size = base_size - 2,
+        hjust = 0
+      ),
+      strip.text = element_text(
+        face = "bold", colour = sdg_maroon,
+        size = base_size
+      ),
+      axis.title = element_text(
+        face = "bold", colour = sdg_text
+      ),
+      axis.text = element_text(colour = sdg_text),
+      legend.position = "bottom",
+      legend.title = element_blank(),
+      plot.title.position = "plot",
+      plot.caption.position = "plot"
+    )
+}
+```
+
+# Overview
+
+This project examines India's historical progress across three development indicators and uses time-series models to project their trajectories towards 2030.
+
+| Indicator | 2030 benchmark |
+|:--|--:|
+| Maternal mortality ratio (MMR) | 70 deaths per 100,000 live births |
+| Safely managed sanitation | 100% |
+| Clean cooking access | 100% |
+
+Forecasts are conditional projections based on historical patterns, not guarantees of future outcomes.
+
+# 1. Data
+
+```{r import-data}
+data_file <- "India_SDG_TimeSeries_RawData.xlsx"
+
+if (!file.exists(data_file)) {
+  stop(
+    "Data workbook not found. Place India_SDG_TimeSeries_RawData.xlsx ",
+    "in the same folder as this R Markdown file."
+  )
+}
+
+df <- read_excel(data_file, sheet = "Raw_Data") %>%
+  mutate(
+    Year = as.integer(Year),
+    MMR = as.numeric(MMR),
+    `Safely Managed Sanitation (%)` =
+      as.numeric(`Safely Managed Sanitation (%)`),
+    `Clean Cooking (%)` =
+      as.numeric(`Clean Cooking (%)`)
+  ) %>%
+  arrange(Year)
+
+required_cols <- c(
+  "Year", "MMR",
+  "Safely Managed Sanitation (%)",
+  "Clean Cooking (%)"
+)
+
+if (!all(required_cols %in% names(df))) {
+  stop("The workbook does not contain all expected columns.")
+}
+
+if (anyDuplicated(df$Year)) {
+  stop("Duplicate years found. Check the source data.")
+}
+
+if (!all(diff(df$Year) == 1)) {
+  stop("Years must be consecutive. Check the source data.")
+}
+
+if (anyNA(df$Year) ||
+    anyNA(df$`Safely Managed Sanitation (%)`) ||
+    anyNA(df$`Clean Cooking (%)`)) {
+  stop("Missing years or percentage values detected.")
+}
+
+if (sum(!is.na(df$MMR)) < 10) {
+  stop("Insufficient observed MMR values.")
+}
+
+kable(
+  tibble(
+    Measure = c(
+      "First year", "Last year",
+      "Observed MMR values", "Missing MMR values"
+    ),
+    Value = c(
+      min(df$Year),
+      max(df$Year),
+      sum(!is.na(df$MMR)),
+      sum(is.na(df$MMR))
+    )
+  ),
+  caption = "Dataset summary"
+)
+```
+
+# 2. Historical trajectories
+
+```{r historical-data}
+historical <- df %>%
+  pivot_longer(
+    cols = c(
+      MMR,
+      `Safely Managed Sanitation (%)`,
+      `Clean Cooking (%)`
+    ),
+    names_to = "Indicator",
+    values_to = "Value"
+  ) %>%
+  mutate(
+    Indicator = recode(
+      Indicator,
+      "MMR" = "Maternal mortality ratio",
+      "Safely Managed Sanitation (%)" =
+        "Safely managed sanitation",
+      "Clean Cooking (%)" = "Clean cooking access"
+    )
+  )
+
+ggplot(historical, aes(Year, Value)) +
+  geom_line(
+    colour = sdg_burgundy,
+    linewidth = 1.05,
+    na.rm = TRUE
+  ) +
+  geom_point(
+    colour = sdg_burgundy,
+    size = 1.8,
+    na.rm = TRUE
+  ) +
+  facet_wrap(
+    ~ Indicator,
+    scales = "free_y",
+    ncol = 1
+  ) +
+  scale_x_continuous(
+    breaks = pretty_breaks(n = 7)
+  ) +
+  labs(
+    title = "India's development indicators, 2000–2024",
+    subtitle = "Observed annual values",
+    x = NULL,
+    y = "Indicator value",
+    caption = "Source: project dataset. MMR for 2024 is unavailable."
+  ) +
+  theme_sdg()
+```
+
+The indicators use different units and are displayed on separate scales. MMR is a mortality rate; sanitation and clean cooking are percentages.
+
+# 3. Forecast model validation
+
+Models are trained on 2000–2018 and evaluated against observed values from 2019–2023. Lower MAE and RMSE indicate better test-period accuracy.
+
+```{r model-validation}
+train_data <- df %>%
+  filter(Year >= 2000, Year <= 2018) %>%
+  arrange(Year)
+
+test_data <- df %>%
+  filter(Year >= 2019, Year <= 2023) %>%
+  arrange(Year)
+
+if (nrow(train_data) != 19 || nrow(test_data) != 5) {
+  stop("Unexpected training or test period. Check the dataset.")
+}
+
+evaluate_models <- function(variable, indicator) {
+
+  y_train <- train_data[[variable]]
+  y_test <- test_data[[variable]]
+
+  if (anyNA(y_train) || anyNA(y_test)) {
+    stop(paste("Missing values in validation series:", indicator))
+  }
+
+  h <- length(y_test)
+
+  naive_pred <- naive(
+    ts(y_train, frequency = 1), h = h
+  )$mean
+
+  drift_pred <- rwf(
+    ts(y_train, frequency = 1),
+    h = h,
+    drift = TRUE
+  )$mean
+
+  linear_fit <- lm(
+    y ~ t,
+    data = data.frame(
+      y = y_train,
+      t = seq_along(y_train)
+    )
+  )
+
+  linear_pred <- predict(
+    linear_fit,
+    newdata = data.frame(
+      t = length(y_train) + seq_len(h)
+    )
+  )
+
+  ets_pred <- forecast(
+    ets(ts(y_train, frequency = 1)),
+    h = h
+  )$mean
+
+  predictions <- list(
+    Naive = as.numeric(naive_pred),
+    Drift = as.numeric(drift_pred),
+    `Linear trend` = as.numeric(linear_pred),
+    ETS = as.numeric(ets_pred)
+  )
+
+  bind_rows(lapply(names(predictions), function(model_name) {
+    errors <- y_test - predictions[[model_name]]
+
+    tibble(
+      Indicator = indicator,
+      Model = model_name,
+      MAE = mean(abs(errors)),
+      RMSE = sqrt(mean(errors^2))
+    )
+  }))
+}
+
+accuracy_results <- bind_rows(
+  evaluate_models("MMR", "Maternal mortality ratio"),
+  evaluate_models(
+    "Safely Managed Sanitation (%)",
+    "Safely managed sanitation"
+  ),
+  evaluate_models("Clean Cooking (%)", "Clean cooking access")
+)
+
+kable(
+  accuracy_results %>%
+    arrange(Indicator, MAE) %>%
+    mutate(
+      MAE = round(MAE, 2),
+      RMSE = round(RMSE, 2)
+    ),
+  caption = "Out-of-sample forecast accuracy, 2019–2023"
+)
+```
+
+The validation results support ETS for MMR and clean cooking, and the Drift model for sanitation. The final forecasts below use these model choices.
+
+# 4. Forecasts to 2030
+
+MMR is fitted using observations through 2023 because its 2024 value is missing. Sanitation and clean cooking are fitted through 2024.
+
+```{r fit-forecast-models}
+forecast_end <- 2030L
+
+# MMR: last observed year is 2023
+mmr_data <- df %>%
+  filter(!is.na(MMR)) %>%
+  arrange(Year)
+
+mmr_last_year <- max(mmr_data$Year)
+
+mmr_model <- ets(
+  ts(
+    mmr_data$MMR,
+    start = min(mmr_data$Year),
+    frequency = 1
+  )
+)
+
+mmr_fc <- forecast(
+  mmr_model,
+  h = forecast_end - mmr_last_year,
+  level = 95
+)
+
+# Sanitation: Drift model
+sanitation_data <- df$`Safely Managed Sanitation (%)`
+sanitation_last_year <- max(df$Year)
+
+sanitation_model <- rwf(
+  ts(
+    sanitation_data,
+    start = min(df$Year),
+    frequency = 1
+  ),
+  h = forecast_end - sanitation_last_year,
+  drift = TRUE,
+  level = 95
+)
+
+# Clean cooking: ETS
+cooking_data <- df$`Clean Cooking (%)`
+cooking_last_year <- max(df$Year)
+
+cooking_model <- ets(
+  ts(
+    cooking_data,
+    start = min(df$Year),
+    frequency = 1
+  )
+)
+
+cooking_fc <- forecast(
+  cooking_model,
+  h = forecast_end - cooking_last_year,
+  level = 95
+)
+
+# Assemble forecast values with explicit calendar years
+forecast_data <- bind_rows(
+  tibble(
+    Year = seq(mmr_last_year + 1, forecast_end),
+    Indicator = "Maternal mortality ratio",
+    Forecast = as.numeric(mmr_fc$mean),
+    Lower = as.numeric(mmr_fc$lower[, "95%"]),
+    Upper = as.numeric(mmr_fc$upper[, "95%"])
+  ),
+  tibble(
+    Year = seq(sanitation_last_year + 1, forecast_end),
+    Indicator = "Safely managed sanitation",
+    Forecast = as.numeric(sanitation_model$mean),
+    Lower = as.numeric(sanitation_model$lower[, "95%"]),
+    Upper = as.numeric(sanitation_model$upper[, "95%"])
+  ),
+  tibble(
+    Year = seq(cooking_last_year + 1, forecast_end),
+    Indicator = "Clean cooking access",
+    Forecast = as.numeric(cooking_fc$mean),
+    Lower = as.numeric(cooking_fc$lower[, "95%"]),
+    Upper = as.numeric(cooking_fc$upper[, "95%"])
+  )
+)
+
+targets <- tibble(
+  Indicator = c(
+    "Maternal mortality ratio",
+    "Safely managed sanitation",
+    "Clean cooking access"
+  ),
+  Target = c(70, 100, 100)
+)
+
+forecast_2030 <- forecast_data %>%
+  filter(Year == 2030) %>%
+  left_join(targets, by = "Indicator") %>%
+  mutate(
+    Forecast = round(Forecast, 1),
+    Lower = round(Lower, 1),
+    Upper = round(Upper, 1),
+    Target = round(Target, 1),
+    Assessment = case_when(
+      Indicator == "Maternal mortality ratio" &
+        Forecast <= Target ~ "Target met in point forecast",
+      Indicator == "Maternal mortality ratio" &
+        Forecast > Target ~ "Target not met in point forecast",
+      Indicator != "Maternal mortality ratio" &
+        Forecast >= Target ~ "Target met in point forecast",
+      TRUE ~ "Target not met in point forecast"
+    )
+  )
+
+kable(
+  forecast_2030 %>%
+    select(
+      Indicator, Forecast, Lower, Upper,
+      Target, Assessment
+    ),
+  col.names = c(
+    "Indicator", "2030 forecast",
+    "Lower 95%", "Upper 95%",
+    "Target", "Point-forecast assessment"
+  ),
+  caption = "Projected 2030 values and 95% prediction intervals"
+)
+```
+
+## Combined forecast figure
+
+The three panels share the same visual design but use independent y-axes because the indicators have different units. The burgundy line shows observations, the maroon line shows forecasts, the shaded region shows the 95% prediction interval, and the brown dashed line marks the target.
+
+
+```{r final-forecast-figure, fig.width=6.2, fig.height=8, out.width="95%"}
+
+forecast_plot <- forecast_data %>%
+  mutate(Series = "Forecast")
+
+observed_plot <- historical %>%
+  mutate(Series = "Observed")
+
+target_plot <- targets
+
+ggplot() +
+  geom_ribbon(
+    data = forecast_plot,
+    aes(
+      x = Year,
+      ymin = Lower,
+      ymax = Upper
+    ),
+    fill = sdg_neutral,
+    alpha = 0.85
+  ) +
+  geom_line(
+    data = observed_plot,
+    aes(
+      x = Year,
+      y = Value,
+      colour = "Observed"
+    ),
+    linewidth = 1.05,
+    na.rm = TRUE
+  ) +
+  geom_point(
+    data = observed_plot,
+    aes(
+      x = Year,
+      y = Value,
+      colour = "Observed"
+    ),
+    size = 1.5,
+    na.rm = TRUE
+  ) +
+  geom_line(
+    data = forecast_plot,
+    aes(
+      x = Year,
+      y = Forecast,
+      colour = "Forecast"
+    ),
+    linewidth = 1.15
+  ) +
+  geom_point(
+    data = forecast_plot %>% filter(Year == 2030),
+    aes(
+      x = Year,
+      y = Forecast,
+      colour = "Forecast"
+    ),
+    size = 2.8
+  ) +
+  geom_hline(
+    data = target_plot,
+    aes(
+      yintercept = Target,
+      linetype = "2030 target"
+    ),
+    colour = sdg_brown,
+    linewidth = 0.7
+  ) +
+  facet_wrap(
+    ~ Indicator,
+    scales = "free_y",
+    ncol = 1
+  ) +
+  scale_colour_manual(
+    values = c(
+      "Observed" = sdg_burgundy,
+      "Forecast" = sdg_maroon
+    )
+  ) +
+  scale_linetype_manual(
+    values = c("2030 target" = "dashed")
+  ) +
+  scale_x_continuous(
+    breaks = pretty_breaks(n = 7)
+  ) +
+  labs(
+    title = "India's trajectory towards the 2030 targets",
+    subtitle = "Historical observations and model-based projections",
+    x = NULL,
+    y = "Indicator value",
+    colour = NULL,
+    linetype = NULL,
+    caption = paste(
+      "Shaded bands: 95% prediction intervals.",
+      "Forecast horizons begin in 2024 for MMR and 2025 for the other indicators.",
+      "Forecasts extrapolate historical patterns."
+    )
+  ) +
+  theme_sdg() +
+  theme(
+    legend.position = "bottom",
+    panel.spacing = grid::unit(1.2, "lines")
+  )
+```
+
+# 5. Interpretation
+
+```{r interpretation, results='asis', echo=FALSE}
+mmr_2030 <- forecast_2030 %>%
+  filter(Indicator == "Maternal mortality ratio")
+
+san_2030 <- forecast_2030 %>%
+  filter(Indicator == "Safely managed sanitation")
+
+cook_2030 <- forecast_2030 %>%
+  filter(Indicator == "Clean cooking access")
+
+cat(sprintf(
+  paste0(
+    "- **MMR:** the 2030 point forecast is %.1f, against a target of 70. ",
+    "Its prediction interval is %.1f–%.1f, indicating substantial uncertainty.\n\n"
+  ),
+  mmr_2030$Forecast, mmr_2030$Lower, mmr_2030$Upper
+))
+
+cat(sprintf(
+  paste0(
+    "- **Sanitation:** the 2030 point forecast is %.1f%%, ",
+    "below the 100%% target under the fitted trend.\n\n"
+  ),
+  san_2030$Forecast
+))
+
+cat(sprintf(
+  paste0(
+    "- **Clean cooking:** the 2030 point forecast is %.1f%%, ",
+    "close to but below the 100%% target.\n\n"
+  ),
+  cook_2030$Forecast
+))
+```
+
+The forecast intervals should be interpreted alongside the point forecasts. In particular, an interval extending above 100% for a percentage indicator is a limitation of the unconstrained statistical model, not a physically possible outcome.
+
+# 6. Limitations
+
+- The analysis extrapolates historical patterns and does not model future policy interventions or structural changes.
+- The 2021 MMR observation is retained as verified in the source data. Its influence on forecasts should be acknowledged.
+- MMR's last observed year is 2023, whereas sanitation and clean cooking data extend to 2024.
+- Forecast intervals depend on model assumptions and may not capture all real-world uncertainty.
+- The three indicators have different definitions and units; their numerical values are not directly comparable.
+
+# 7. Conclusion
+
+The projections indicate that India's three development indicators may follow different trajectories towards 2030. Under the selected models, sanitation remains below its universal-access benchmark, clean cooking approaches its target, and MMR remains uncertain relative to its target.
+
+These results are best interpreted as conditional projections rather than definitive predictions. Continued progress depends on policy implementation, access, data quality and changes that historical time-series models cannot fully anticipate.
+
+# Data and references
+
+- **Maternal mortality:** WHO, UNICEF, UNFPA, World Bank Group and UN DESA. *Trends in Maternal Mortality 2000 to 2023* (2025). [WHO publication](https://www.who.int/publications/i/item/9789240108462).
+- **Safely managed sanitation:** World Bank, World Development Indicators. [Indicator SH.STA.SMSS.ZS — India](https://data.worldbank.org/indicator/SH.STA.SMSS.ZS?locations=IN).
+- **Clean cooking access:** World Bank, World Development Indicators. [Indicator EG.CFT.ACCS.ZS — India](https://data.worldbank.org/indicator/EG.CFT.ACCS.ZS?locations=IN).
+
+*Forecasts are the author's calculations using the project dataset and R time-series models.*
